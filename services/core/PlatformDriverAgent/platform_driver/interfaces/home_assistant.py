@@ -57,6 +57,7 @@ class HomeAssistantRegister(BaseRegister):
 def _post_method(url, headers, data, operation_description):
     err = None
     try:
+        _log.info("Calling Home Assistant service: url=%s, data=%s, operation=%s", url, data, operation_description)
         response = requests.post(url, headers=headers, json=data)
         if response.status_code == 200:
             _log.info(f"Success: {operation_description}")
@@ -155,6 +156,59 @@ class Interface(BasicRevert, BaseInterface):
             else:
                 _log.info(f"Currently, input_booleans only support state")
 
+        # Changing fan values.
+        elif "fan." in register.entity_id:
+            if entity_point == "state":
+                if isinstance(register.value, int) and register.value in [0, 1]:
+                    if register.value == 1:
+                        self.turn_on_fan(register.entity_id)
+                    elif register.value == 0:
+                        self.turn_off_fan(register.entity_id)
+                else:
+                    error_msg = f"State value for {register.entity_id} should be an integer value of 1 or 0"
+                    _log.error(error_msg)
+                    raise ValueError(error_msg)
+
+            elif entity_point == "percentage":
+                if isinstance(register.value, int) and 0 <= register.value <= 100:
+                    self.set_fan_percentage(register.entity_id, register.value)
+                else:
+                    error_msg = "Fan percentage value should be an integer between 0 and 100"
+                    _log.error(error_msg)
+                    raise ValueError(error_msg)
+
+            elif entity_point == "preset_mode":
+                if isinstance(register.value, str) and register.value:
+                    self.set_fan_preset_mode(register.entity_id, register.value)
+                else:
+                    error_msg = "Fan preset_mode value should be a non-empty string"
+                    _log.error(error_msg)
+                    raise ValueError(error_msg)
+
+            elif entity_point == "direction":
+                if isinstance(register.value, str) and register.value in ["forward", "reverse"]:
+                    self.set_fan_direction(register.entity_id, register.value)
+                else:
+                    error_msg = "Fan direction value should be 'forward' or 'reverse'"
+                    _log.error(error_msg)
+                    raise ValueError(error_msg)
+
+            elif entity_point == "oscillating":
+                if isinstance(register.value, int) and register.value in [0, 1]:
+                    self.set_fan_oscillation(register.entity_id, bool(register.value))
+                elif isinstance(register.value, bool):
+                    self.set_fan_oscillation(register.entity_id, register.value)
+                else:
+                    error_msg = "Fan oscillating value should be 0, 1, True, or False"
+                    _log.error(error_msg)
+                    raise ValueError(error_msg)
+
+            else:
+                error_msg = f"Unexpected entity_point {entity_point} for fan {register.entity_id}. " \
+                            f"Supported: state, percentage, preset_mode, direction, oscillating"
+                _log.error(error_msg)
+                raise ValueError(error_msg)
+
         # Changing thermostat values.
         elif "climate." in register.entity_id:
             if entity_point == "state":
@@ -180,7 +234,7 @@ class Interface(BasicRevert, BaseInterface):
                 raise ValueError(error_msg)
         else:
             error_msg = f"Unsupported entity_id: {register.entity_id}. " \
-                        f"Currently set_point is supported only for thermostats and lights"
+                        f"Currently set_point is supported only for thermostats, lights, input_booleans, and fans"
             _log.error(error_msg)
             raise ValueError(error_msg)
         return register.value
@@ -236,8 +290,32 @@ class Interface(BasicRevert, BaseInterface):
                         attribute = entity_data.get("attributes", {}).get(f"{entity_point}", 0)
                         register.value = attribute
                         result[register.point_name] = attribute
+                # handling fan states
+                elif "fan." in entity_id:
+                    if entity_point == "state":
+                        state = entity_data.get("state", None)
+                        # Converting fan states to numbers (on=1, off=0).
+                        if state == "on":
+                            register.value = 1
+                            result[register.point_name] = 1
+                        elif state == "off":
+                            register.value = 0
+                            result[register.point_name] = 0
+                        else:
+                            register.value = state
+                            result[register.point_name] = state
+                    elif entity_point == "oscillating":
+                        # Convert boolean to int for consistency
+                        oscillating = entity_data.get("attributes", {}).get("oscillating", False)
+                        register.value = 1 if oscillating else 0
+                        result[register.point_name] = register.value
+                    else:
+                        # Handle percentage, preset_mode, direction, and other attributes
+                        attribute = entity_data.get("attributes", {}).get(f"{entity_point}", None)
+                        register.value = attribute
+                        result[register.point_name] = attribute
                 # handling light states
-                elif "light." or "input_boolean." in entity_id: # Checks for lights or input bools since they have the same states.
+                elif "light." in entity_id or "input_boolean." in entity_id:  # Checks for lights or input bools since they have the same states.
                     if entity_point == "state":
                         state = entity_data.get("state", None)
                         # Converting light states to numbers.
@@ -251,7 +329,7 @@ class Interface(BasicRevert, BaseInterface):
                         attribute = entity_data.get("attributes", {}).get(f"{entity_point}", 0)
                         register.value = attribute
                         result[register.point_name] = attribute
-                else:  # handling all devices that are not thermostats or light states
+                else:  # handling all devices that are not thermostats, fans, or light states
                     if entity_point == "state":
 
                         state = entity_data.get("state", None)
@@ -405,3 +483,113 @@ class Interface(BasicRevert, BaseInterface):
             print(f"Successfully set {entity_id} to {state}")
         else:
             print(f"Failed to set {entity_id} to {state}: {response.text}")
+
+    # Fan control methods
+    # Reference: https://www.home-assistant.io/integrations/fan/
+    # API: https://developers.home-assistant.io/docs/api/rest/
+
+    def turn_on_fan(self, entity_id, percentage=None, preset_mode=None):
+        """Turn on a fan device with optional percentage or preset_mode."""
+        url = f"http://{self.ip_address}:{self.port}/api/services/fan/turn_on"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id
+        }
+        if percentage is not None:
+            payload["percentage"] = percentage
+        if preset_mode is not None:
+            payload["preset_mode"] = preset_mode
+
+        _post_method(url, headers, payload, f"turn on fan {entity_id}")
+
+    def turn_off_fan(self, entity_id):
+        """Turn off a fan device."""
+        url = f"http://{self.ip_address}:{self.port}/api/services/fan/turn_off"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id
+        }
+        _post_method(url, headers, payload, f"turn off fan {entity_id}")
+
+    def set_fan_percentage(self, entity_id, percentage):
+        """Set the speed percentage for a fan device (0-100)."""
+        if not entity_id.startswith("fan."):
+            error_msg = f"{entity_id} is not a valid fan entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/fan/set_percentage"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id,
+            "percentage": percentage
+        }
+        _post_method(url, headers, payload, f"set fan {entity_id} percentage to {percentage}")
+
+    def set_fan_preset_mode(self, entity_id, preset_mode):
+        """Set a preset mode for a fan device (e.g., 'Low', 'Medium', 'High', 'auto')."""
+        if not entity_id.startswith("fan."):
+            error_msg = f"{entity_id} is not a valid fan entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/fan/set_preset_mode"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id,
+            "preset_mode": preset_mode
+        }
+        _post_method(url, headers, payload, f"set fan {entity_id} preset mode to {preset_mode}")
+
+    def set_fan_direction(self, entity_id, direction):
+        """Set the rotation direction for a fan device ('forward' or 'reverse')."""
+        if not entity_id.startswith("fan."):
+            error_msg = f"{entity_id} is not a valid fan entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        if direction not in ["forward", "reverse"]:
+            error_msg = f"Invalid direction '{direction}'. Must be 'forward' or 'reverse'."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/fan/set_direction"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id,
+            "direction": direction
+        }
+        _post_method(url, headers, payload, f"set fan {entity_id} direction to {direction}")
+
+    def set_fan_oscillation(self, entity_id, oscillating):
+        """Set the oscillation for a fan device (True or False)."""
+        if not entity_id.startswith("fan."):
+            error_msg = f"{entity_id} is not a valid fan entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/fan/oscillate"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id,
+            "oscillating": oscillating
+        }
+        _post_method(url, headers, payload, f"set fan {entity_id} oscillating to {oscillating}")

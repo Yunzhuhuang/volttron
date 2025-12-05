@@ -1,0 +1,7 @@
+Entity ID,Entity Point,Volttron Point Name,Units,Units Details,Writable,Type,Notes
+fan.living_room_fan,state,fan_state,On / Off,"off: 0, on: 1",true,int,Fan power state - 0 for off 1 for on
+fan.living_room_fan,percentage,fan_speed,%,0-100,true,int,Fan speed percentage from 0 to 100
+fan.living_room_fan,preset_mode,fan_preset,,"Low, Medium, High, auto",true,string,Fan preset mode
+fan.living_room_fan,direction,fan_direction,,"forward, reverse",true,string,Fan rotation direction
+fan.living_room_fan,oscillating,fan_oscillating,On / Off,"off: 0, on: 1",true,int,Fan oscillation - 0 for off 1 for on
+

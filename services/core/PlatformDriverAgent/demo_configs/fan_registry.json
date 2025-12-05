@@ -1,0 +1,53 @@
+[
+    {
+        "Entity ID": "fan.living_room_fan",
+        "Entity Point": "state",
+        "Volttron Point Name": "fan_state",
+        "Units": "On / Off",
+        "Units Details": "off: 0, on: 1",
+        "Writable": true,
+        "Type": "int",
+        "Notes": "Fan power state - 0 for off, 1 for on"
+    },
+    {
+        "Entity ID": "fan.living_room_fan",
+        "Entity Point": "percentage",
+        "Volttron Point Name": "fan_speed",
+        "Units": "%",
+        "Units Details": "0-100",
+        "Writable": true,
+        "Type": "int",
+        "Notes": "Fan speed percentage from 0 to 100"
+    },
+    {
+        "Entity ID": "fan.living_room_fan",
+        "Entity Point": "preset_mode",
+        "Volttron Point Name": "fan_preset",
+        "Units": "",
+        "Units Details": "Low, Medium, High, auto",
+        "Writable": true,
+        "Type": "string",
+        "Notes": "Fan preset mode"
+    },
+    {
+        "Entity ID": "fan.living_room_fan",
+        "Entity Point": "direction",
+        "Volttron Point Name": "fan_direction",
+        "Units": "",
+        "Units Details": "forward, reverse",
+        "Writable": true,
+        "Type": "string",
+        "Notes": "Fan rotation direction"
+    },
+    {
+        "Entity ID": "fan.living_room_fan",
+        "Entity Point": "oscillating",
+        "Volttron Point Name": "fan_oscillating",
+        "Units": "On / Off",
+        "Units Details": "off: 0, on: 1",
+        "Writable": true,
+        "Type": "int",
+        "Notes": "Fan oscillation - 0 for off, 1 for on"
+    }
+]
+
