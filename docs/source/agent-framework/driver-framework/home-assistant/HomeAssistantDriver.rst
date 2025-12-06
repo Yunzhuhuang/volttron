@@ -4,7 +4,12 @@ Home Assistant Driver
 =====================
 
 The Home Assistant driver enables VOLTTRON to read any data point from any Home Assistant controlled device.
-Currently control(write access) is supported only for lights(state and brightness) and thermostats(state and temperature).
+Currently control(write access) is supported for:
+
+- **Lights**: state (on/off) and brightness (0-255)
+- **Thermostats**: state (off/heat/cool/auto) and temperature
+- **Input Booleans**: state (on/off)
+- **Covers**: state (open/close/stop), position (0-100), and tilt_position (0-100)
 
 The following diagram shows interaction between platform driver agent and home assistant driver.
 
@@ -159,6 +164,104 @@ For thermostats, the state is converted into numbers as follows: "0: Off, 2: hea
    ]
 
 
+Example Cover Registry
+***************************
+
+Covers include blinds, shades, curtains, garage doors, and other similar devices. The Home Assistant driver supports
+comprehensive control of covers including state (open/close/stop), position, and tilt position.
+
+**Cover State Values:**
+
+- **0**: Close the cover
+- **1**: Open the cover
+- **2**: Stop the cover (halt current movement)
+
+**Cover Positions:**
+
+- **position**: 0-100, where 0=fully closed and 100=fully open
+- **tilt_position**: 0-100, for covers that support tilting (e.g., venetian blinds)
+
+**Supported Cover Device Classes:**
+
+The driver supports all Home Assistant cover types including: awning, blind, curtain, damper, door, garage, gate, shade, shutter, and window.
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "cover.living_room_blinds",
+           "Entity Point": "state",
+           "Volttron Point Name": "blinds_state",
+           "Units": "Enumeration",
+           "Units Details": "0: Close, 1: Open, 2: Stop",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Control to open/close/stop the blinds"
+       },
+       {
+           "Entity ID": "cover.living_room_blinds",
+           "Entity Point": "current_position",
+           "Volttron Point Name": "blinds_position",
+           "Units": "Percentage",
+           "Units Details": "0-100, where 0=closed and 100=fully open",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Position control (0-100)"
+       },
+       {
+           "Entity ID": "cover.living_room_blinds",
+           "Entity Point": "current_tilt_position",
+           "Volttron Point Name": "blinds_tilt",
+           "Units": "Percentage",
+           "Units Details": "0-100, tilt angle control",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Tilt position for venetian blinds (0-100)"
+       }
+   ]
+
+**Example: Garage Door**
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "cover.garage_door",
+           "Entity Point": "state",
+           "Volttron Point Name": "garage_state",
+           "Units": "Enumeration",
+           "Units Details": "0: Close, 1: Open, 2: Stop",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Garage door control"
+       },
+       {
+           "Entity ID": "cover.garage_door",
+           "Entity Point": "current_position",
+           "Volttron Point Name": "garage_position",
+           "Units": "Percentage",
+           "Units Details": "0-100, door position",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Position allows partial opening"
+       }
+   ]
+
+.. note::
+
+   Not all covers support all features. For example:
+
+   - Some covers may only support open/close but not position control
+   - Tilt position is only available for covers like venetian blinds that support tilting
+   - When a feature is not supported, the attribute will not be available in Home Assistant
+
+   Check your specific device's capabilities in the Home Assistant Developer Tools > States panel.
+
 
 Transfer the registers files and the config files into the VOLTTRON config store using the commands below:
 
@@ -178,9 +281,64 @@ Upon completion, initiate the platform driver. Utilize the listener agent to ver
 
 Running Tests
 +++++++++++++++++++++++
-To run tests on the VOLTTRON home assistant driver you need to create a helper in your home assistant instance. This can be done by going to **Settings > Devices & services > Helpers > Create Helper > Toggle**. Name this new toggle **volttrontest**. After that run the pytest from the root of your VOLTTRON file.
+
+**Basic Tests (Input Boolean)**
+
+To run basic tests on the VOLTTRON Home Assistant driver, you need to create a helper in your Home Assistant instance.
+This can be done by going to **Settings > Devices & services > Helpers > Create Helper > Toggle**.
+Name this new toggle **volttrontest**.
+
+Update the test file with your Home Assistant connection details:
+
+.. code-block:: python
+
+   HOMEASSISTANT_TEST_IP = "192.168.1.100"  # Your Home Assistant IP
+   ACCESS_TOKEN = "your_long_lived_access_token"
+   PORT = "8123"
+
+Then run the basic tests from the root of your VOLTTRON directory:
 
 .. code-block:: bash
-    pytest volttron/services/core/PlatformDriverAgent/tests/test_home_assistant.py
 
-If everything works, you will see 6 passed tests.
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py::test_get_point
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py::test_data_poll
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py::test_set_point
+
+**Cover Tests**
+
+To run cover tests, you need to create a cover helper in Home Assistant:
+
+1. Go to **Settings > Devices & services > Helpers > Create Helper > Cover Template**
+2. Name it **volttroncover**
+3. Configure it with basic open/close functionality
+
+Then enable cover tests by setting the flag in the test file:
+
+.. code-block:: python
+
+   HOMEASSISTANT_COVER_TEST = "yes"  # Enable cover tests
+
+Run the cover tests:
+
+.. code-block:: bash
+
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py -k cover
+
+The cover test suite includes:
+
+- ``test_cover_get_state`` - Tests reading cover state
+- ``test_cover_get_position`` - Tests reading cover position
+- ``test_cover_scrape_all`` - Tests scraping all cover data
+- ``test_cover_open`` - Tests opening a cover
+- ``test_cover_close`` - Tests closing a cover
+- ``test_cover_set_position`` - Tests setting cover position
+- ``test_cover_invalid_state`` - Tests error handling for invalid state values
+- ``test_cover_invalid_position`` - Tests error handling for invalid position values
+
+**Run All Tests**
+
+To run all tests (basic and cover tests):
+
+.. code-block:: bash
+
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py -v
