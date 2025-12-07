@@ -1,0 +1,12 @@
+{
+    "driver_config": {
+        "ip_address": "192.168.1.100",
+        "access_token": "your_home_assistant_long_lived_token_here",
+        "port": "8123"
+    },
+    "driver_type": "home_assistant",
+    "registry_config": "config://fan_registry.json",
+    "timezone": "US/Pacific",
+    "interval": 60
+}
+
