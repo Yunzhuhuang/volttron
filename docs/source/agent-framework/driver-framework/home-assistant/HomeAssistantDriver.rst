@@ -4,8 +4,14 @@ Home Assistant Driver
 =====================
 
 The Home Assistant driver enables VOLTTRON to read any data point from any Home Assistant controlled device.
-Currently control(write access) is supported only for lights(state and brightness) and thermostats(state and temperature).
+**Currently Supported Write-Access Devices:**
 
+- **Lights**: state (on/off) and brightness (0-255)
+- **Thermostats**: state (off/heat/cool/auto) and temperature
+- **Input Booleans**: state (on/off)
+- **Fans**: state, percentage (0-100), preset_mode, direction, oscillating
+- **Switches**: state (on/off)
+- **Covers**: state (open/close/stop), position (0-100), tilt_position (0-100)
 The following diagram shows interaction between platform driver agent and home assistant driver.
 
 .. mermaid::
@@ -160,6 +166,162 @@ For thermostats, the state is converted into numbers as follows: "0: Off, 2: hea
 
 
 
+Example Switch Registry
+***************************
+
+Switches are simple on/off devices such as outlets, relays, or other switched devices.
+
+**Switch State Values:**
+
+- **0**: Turn off the switch
+- **1**: Turn on the switch
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "switch.living_room_outlet",
+           "Entity Point": "state",
+           "Volttron Point Name": "outlet_state",
+           "Units": "On / Off",
+           "Units Details": "off: 0, on: 1",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Control outlet on/off state"
+       }
+   ]
+
+**Example: Multiple Switches**
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "switch.living_room_outlet",
+           "Entity Point": "state",
+           "Volttron Point Name": "living_room_outlet_state",
+           "Units": "On / Off",
+           "Units Details": "off: 0, on: 1",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Living room outlet control"
+       },
+       {
+           "Entity ID": "switch.bedroom_outlet",
+           "Entity Point": "state",
+           "Volttron Point Name": "bedroom_outlet_state",
+           "Units": "On / Off",
+           "Units Details": "off: 0, on: 1",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Bedroom outlet control"
+       }
+   ]
+
+Example Cover Registry
+***************************
+
+Covers include blinds, shades, curtains, garage doors, and other similar devices. The Home Assistant driver supports
+comprehensive control of covers including state (open/close/stop), position, and tilt position.
+
+**Cover State Values:**
+
+- **0**: Close the cover
+- **1**: Open the cover
+- **2**: Stop the cover (halt current movement)
+
+**Cover Positions:**
+
+- **position**: 0-100, where 0=fully closed and 100=fully open
+- **tilt_position**: 0-100, for covers that support tilting (e.g., venetian blinds)
+
+**Supported Cover Device Classes:**
+
+The driver supports all Home Assistant cover types including: awning, blind, curtain, damper, door, garage, gate, shade, shutter, and window.
+
+**Example: Blinds with Position and Tilt Control**
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "cover.living_room_blinds",
+           "Entity Point": "state",
+           "Volttron Point Name": "blinds_state",
+           "Units": "Enumeration",
+           "Units Details": "0: Close, 1: Open, 2: Stop",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Control to open/close/stop the blinds"
+       },
+       {
+           "Entity ID": "cover.living_room_blinds",
+           "Entity Point": "current_position",
+           "Volttron Point Name": "blinds_position",
+           "Units": "Percentage",
+           "Units Details": "0-100, where 0=closed and 100=fully open",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Position control (0-100)"
+       },
+       {
+           "Entity ID": "cover.living_room_blinds",
+           "Entity Point": "current_tilt_position",
+           "Volttron Point Name": "blinds_tilt",
+           "Units": "Percentage",
+           "Units Details": "0-100, tilt angle control",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Tilt position for venetian blinds (0-100)"
+       }
+   ]
+
+**Example: Garage Door**
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "cover.garage_door",
+           "Entity Point": "state",
+           "Volttron Point Name": "garage_state",
+           "Units": "Enumeration",
+           "Units Details": "0: Close, 1: Open, 2: Stop",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Garage door control"
+       },
+       {
+           "Entity ID": "cover.garage_door",
+           "Entity Point": "current_position",
+           "Volttron Point Name": "garage_position",
+           "Units": "Percentage",
+           "Units Details": "0-100, door position",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Position allows partial opening"
+       }
+   ]
+
+.. note::
+
+   Not all covers support all features. For example:
+
+   - Some covers may only support open/close but not position control
+   - Tilt position is only available for covers like venetian blinds that support tilting
+   - When a feature is not supported, the attribute will not be available in Home Assistant
+
+   Check your specific device's capabilities in the Home Assistant Developer Tools > States panel.
+
+
 Transfer the registers files and the config files into the VOLTTRON config store using the commands below:
 
 .. code-block:: bash
@@ -178,9 +340,89 @@ Upon completion, initiate the platform driver. Utilize the listener agent to ver
 
 Running Tests
 +++++++++++++++++++++++
-To run tests on the VOLTTRON home assistant driver you need to create a helper in your home assistant instance. This can be done by going to **Settings > Devices & services > Helpers > Create Helper > Toggle**. Name this new toggle **volttrontest**. After that run the pytest from the root of your VOLTTRON file.
+The Home Assistant driver includes comprehensive unit tests and integration tests for all supported device types.
+
+**Unit Tests (No Home Assistant Required)**
+
+Unit tests use mocking and don't require a live Home Assistant instance. They test all device control methods:
 
 .. code-block:: bash
-    pytest volttron/services/core/PlatformDriverAgent/tests/test_home_assistant.py
 
-If everything works, you will see 6 passed tests.
+    # Run all unit tests
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py::TestFanMocked -v
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py::TestSwitchMocked -v
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py::TestCoverMocked -v
+
+**Integration Tests (Require Home Assistant)**
+
+Integration tests require a live Home Assistant instance with actual devices/helpers.
+
+**Basic Integration Tests:**
+
+1. Create a helper toggle in Home Assistant: **Settings > Devices & services > Helpers > Create Helper > Toggle**
+2. Name it **volttrontest**
+3. Set test configuration variables in ``test_home_assistant.py``:
+
+.. code-block:: python
+
+    HOMEASSISTANT_TEST_IP = "192.168.1.100"
+    ACCESS_TOKEN = "your_long_lived_access_token"
+    PORT = "8123"
+
+4. Run basic tests:
+
+.. code-block:: bash
+
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py::test_get_point -v
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py::test_data_poll -v
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py::test_set_point -v
+
+**Fan Integration Tests:**
+
+1. Set ``FAN_TEST_ENTITY_ID`` to your fan entity (e.g., ``"fan.living_room_fan"``)
+2. Run fan tests:
+
+.. code-block:: bash
+
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py -k "fan" -v
+
+**Switch Integration Tests:**
+
+1. Set ``SWITCH_TEST_ENTITY_ID`` to your switch entity (e.g., ``"switch.living_room_outlet"``)
+2. Run switch tests:
+
+.. code-block:: bash
+
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py -k "switch" -v
+
+**Cover Integration Tests:**
+
+1. Create a cover helper or use an existing cover device
+2. Set ``COVER_TEST_ENTITY_ID`` to your cover entity (e.g., ``"cover.living_room_blinds"``)
+3. Run cover tests:
+
+.. code-block:: bash
+
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py -k "cover" -v
+
+**Run All Tests:**
+
+.. code-block:: bash
+
+    # Run all tests (unit + integration)
+    pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py -v
+
+**Test Summary:**
+
+- **Unit Tests**: 70+ tests (no Home Assistant required)
+
+  - Fan: 35 tests
+  - Switch: 11 tests
+  - Cover: 24 tests
+
+- **Integration Tests**: 21+ tests (require Home Assistant)
+
+  - Basic: 3 tests
+  - Fan: 7 tests
+  - Switch: 4 tests
+  - Cover: 6 tests

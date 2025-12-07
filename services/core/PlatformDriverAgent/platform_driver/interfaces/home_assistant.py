@@ -232,6 +232,61 @@ class Interface(BasicRevert, BaseInterface):
                 error_msg = f"Currently set_point is supported only for thermostats state and temperature {register.entity_id}"
                 _log.error(error_msg)
                 raise ValueError(error_msg)
+        
+        # Changing switch values.
+        elif "switch." in register.entity_id:
+            if entity_point == "state":
+                if isinstance(register.value, int) and register.value in [0, 1]:
+                    if register.value == 1:
+                        self.turn_on_switch(register.entity_id)
+                    elif register.value == 0:
+                        self.turn_off_switch(register.entity_id)
+                else:
+                    error_msg = f"State value for {register.entity_id} should be an integer value of 1 or 0"
+                    _log.error(error_msg)
+                    raise ValueError(error_msg)
+            else:
+                error_msg = f"Unexpected entity_point {entity_point} for switch {register.entity_id}. " \
+                            f"Supported: state"
+                _log.error(error_msg)
+                raise ValueError(error_msg)
+
+        # Changing cover values.
+        elif "cover." in register.entity_id:
+            if entity_point == "state":
+                # State values: 0=closed, 1=open, 2=stop
+                if isinstance(register.value, int) and register.value in [0, 1, 2]:
+                    if register.value == 0:
+                        self.close_cover(register.entity_id)
+                    elif register.value == 1:
+                        self.open_cover(register.entity_id)
+                    elif register.value == 2:
+                        self.stop_cover(register.entity_id)
+                else:
+                    error_msg = f"Cover state should be an integer value of 0 (close), 1 (open), or 2 (stop)"
+                    _log.error(error_msg)
+                    raise ValueError(error_msg)
+            elif entity_point == "position" or entity_point == "current_position":
+                # Position: 0-100 (0=closed, 100=fully open)
+                if isinstance(register.value, (int, float)) and 0 <= register.value <= 100:
+                    self.set_cover_position(register.entity_id, register.value)
+                else:
+                    error_msg = f"Cover position should be a number between 0 and 100, got {register.value}"
+                    _log.error(error_msg)
+                    raise ValueError(error_msg)
+            elif entity_point == "tilt_position" or entity_point == "current_tilt_position":
+                # Tilt position: 0-100
+                if isinstance(register.value, (int, float)) and 0 <= register.value <= 100:
+                    self.set_cover_tilt_position(register.entity_id, register.value)
+                else:
+                    error_msg = f"Cover tilt_position should be a number between 0 and 100, got {register.value}"
+                    _log.error(error_msg)
+                    raise ValueError(error_msg)
+            else:
+                error_msg = f"Unsupported entity_point '{entity_point}' for cover {register.entity_id}. " \
+                            f"Supported points: state, position, current_position, tilt_position, current_tilt_position"
+                _log.error(error_msg)
+                raise ValueError(error_msg)
         else:
             error_msg = f"Unsupported entity_id: {register.entity_id}. " \
                         f"Currently set_point is supported only for thermostats, lights, input_booleans, and fans"
@@ -312,6 +367,46 @@ class Interface(BasicRevert, BaseInterface):
                     else:
                         # Handle percentage, preset_mode, direction, and other attributes
                         attribute = entity_data.get("attributes", {}).get(f"{entity_point}", None)
+                        register.value = attribute
+                        result[register.point_name] = attribute
+                # handling switch states
+                elif "switch." in entity_id:
+                    if entity_point == "state":
+                        state = entity_data.get("state", None)
+                        # Converting switch states to numbers (on=1, off=0).
+                        if state == "on":
+                            register.value = 1
+                            result[register.point_name] = 1
+                        elif state == "off":
+                            register.value = 0
+                            result[register.point_name] = 0
+                        else:
+                            register.value = state
+                            result[register.point_name] = state
+                    else:
+                        # Handle other switch attributes
+                        attribute = entity_data.get("attributes", {}).get(f"{entity_point}", None)
+                        register.value = attribute
+                        result[register.point_name] = attribute
+                # handling cover states
+                elif "cover." in entity_id:
+                    if entity_point == "state":
+                        state = entity_data.get("state", None)
+                        # Converting cover states to numbers: closed=0, open=1, opening=1, closing=0
+                        if state in ["open", "opening"]:
+                            register.value = 1
+                            result[register.point_name] = 1
+                        elif state in ["closed", "closing"]:
+                            register.value = 0
+                            result[register.point_name] = 0
+                        else:
+                            # Handle unknown state
+                            _log.warning(f"Unknown cover state '{state}' for {entity_id}, defaulting to 0")
+                            register.value = 0
+                            result[register.point_name] = 0
+                    else:
+                        # Handling position, tilt_position, and other attributes
+                        attribute = entity_data.get("attributes", {}).get(f"{entity_point}", 0)
                         register.value = attribute
                         result[register.point_name] = attribute
                 # handling light states
@@ -593,3 +688,142 @@ class Interface(BasicRevert, BaseInterface):
             "oscillating": oscillating
         }
         _post_method(url, headers, payload, f"set fan {entity_id} oscillating to {oscillating}")
+
+    # Switch control methods
+    # Reference: https://www.home-assistant.io/integrations/switch/
+    # API: https://developers.home-assistant.io/docs/api/rest/
+
+    def turn_on_switch(self, entity_id):
+        """Turn on a switch device."""
+        if not entity_id.startswith("switch."):
+            error_msg = f"{entity_id} is not a valid switch entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/switch/turn_on"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id
+        }
+        _post_method(url, headers, payload, f"turn on switch {entity_id}")
+
+    def turn_off_switch(self, entity_id):
+        """Turn off a switch device."""
+        if not entity_id.startswith("switch."):
+            error_msg = f"{entity_id} is not a valid switch entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/switch/turn_off"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id
+        }
+        _post_method(url, headers, payload, f"turn off switch {entity_id}")
+
+    # Cover control methods
+    # Reference: https://www.home-assistant.io/integrations/cover/
+    # API: https://developers.home-assistant.io/docs/core/entity/cover/
+
+    def open_cover(self, entity_id):
+        """Open a cover device."""
+        if not entity_id.startswith("cover."):
+            error_msg = f"{entity_id} is not a valid cover entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/cover/open_cover"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id
+        }
+        _post_method(url, headers, payload, f"open cover {entity_id}")
+
+    def close_cover(self, entity_id):
+        """Close a cover device."""
+        if not entity_id.startswith("cover."):
+            error_msg = f"{entity_id} is not a valid cover entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/cover/close_cover"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id
+        }
+        _post_method(url, headers, payload, f"close cover {entity_id}")
+
+    def stop_cover(self, entity_id):
+        """Stop a cover device."""
+        if not entity_id.startswith("cover."):
+            error_msg = f"{entity_id} is not a valid cover entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/cover/stop_cover"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id
+        }
+        _post_method(url, headers, payload, f"stop cover {entity_id}")
+
+    def set_cover_position(self, entity_id, position):
+        """Set the position of a cover device (0-100, where 0=closed and 100=fully open)."""
+        if not entity_id.startswith("cover."):
+            error_msg = f"{entity_id} is not a valid cover entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        if not isinstance(position, (int, float)) or not 0 <= position <= 100:
+            error_msg = f"Position must be a number between 0 and 100, got {position}"
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/cover/set_cover_position"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id,
+            "position": int(position)
+        }
+        _post_method(url, headers, payload, f"set position of {entity_id} to {position}")
+
+    def set_cover_tilt_position(self, entity_id, tilt_position):
+        """Set the tilt position of a cover device (0-100)."""
+        if not entity_id.startswith("cover."):
+            error_msg = f"{entity_id} is not a valid cover entity ID."
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        if not isinstance(tilt_position, (int, float)) or not 0 <= tilt_position <= 100:
+            error_msg = f"Tilt position must be a number between 0 and 100, got {tilt_position}"
+            _log.error(error_msg)
+            raise ValueError(error_msg)
+
+        url = f"http://{self.ip_address}:{self.port}/api/services/cover/set_cover_tilt_position"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "entity_id": entity_id,
+            "tilt_position": int(tilt_position)
+        }
+        _post_method(url, headers, payload, f"set tilt position of {entity_id} to {tilt_position}")

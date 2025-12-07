@@ -43,13 +43,19 @@ logger = logging.getLogger(__name__)
 # This can be done by going to Settings > Devices & services > Helpers > Create Helper > Toggle
 #
 # For fan integration tests, set FAN_TEST_ENTITY_ID to your fan entity (e.g., "fan.living_room_fan")
+# For switch integration tests, set SWITCH_TEST_ENTITY_ID to your switch entity (e.g., "switch.living_room_switch")
+# For cover integration tests, set COVER_TEST_ENTITY_ID to your cover entity (e.g., "cover.living_room_blinds")
 HOMEASSISTANT_TEST_IP = ""
 ACCESS_TOKEN = ""
 PORT = ""
 FAN_TEST_ENTITY_ID = ""  # Set to your fan entity ID for integration tests
+SWITCH_TEST_ENTITY_ID = ""  # Set to your switch entity ID for integration tests
+COVER_TEST_ENTITY_ID = ""  # Set to your cover entity ID for integration tests
 
 skip_msg = "Some configuration variables are not set. Check HOMEASSISTANT_TEST_IP, ACCESS_TOKEN, and PORT"
 skip_fan_msg = "Fan integration test requires FAN_TEST_ENTITY_ID to be set"
+skip_switch_msg = "Switch integration test requires SWITCH_TEST_ENTITY_ID to be set"
+skip_cover_msg = "Cover integration test requires COVER_TEST_ENTITY_ID to be set"
 
 # Skip condition for integration tests (requires real Home Assistant)
 requires_home_assistant = pytest.mark.skipif(
@@ -63,8 +69,22 @@ requires_fan_entity = pytest.mark.skipif(
     reason=skip_fan_msg
 )
 
+# Skip condition for switch integration tests (requires real Home Assistant + switch entity)
+requires_switch_entity = pytest.mark.skipif(
+    not (HOMEASSISTANT_TEST_IP and ACCESS_TOKEN and PORT and SWITCH_TEST_ENTITY_ID),
+    reason=skip_switch_msg
+)
+
+# Skip condition for cover integration tests (requires real Home Assistant + cover entity)
+requires_cover_entity = pytest.mark.skipif(
+    not (HOMEASSISTANT_TEST_IP and ACCESS_TOKEN and PORT and COVER_TEST_ENTITY_ID),
+    reason=skip_cover_msg
+)
+
 HOMEASSISTANT_DEVICE_TOPIC = "devices/home_assistant"
 FAN_DEVICE_TOPIC = "devices/home_assistant_fan"
+SWITCH_DEVICE_TOPIC = "devices/home_assistant_switch"
+COVER_DEVICE_TOPIC = "devices/home_assistant_cover"
 
 
 # Get the point which will should be off
@@ -707,3 +727,622 @@ class TestFanMocked:
             with pytest.raises(Exception) as exc_info:
                 mock_interface.turn_on_fan("fan.test_fan")
             assert "Connection failed" in str(exc_info.value)
+
+
+# ============================================================================
+# Switch Unit Tests (Mocked - No Real Home Assistant Required)
+# ============================================================================
+
+@pytest.fixture
+def switch_registry_config():
+    """Switch registry configuration for testing."""
+    return [
+        {
+            "Entity ID": "switch.test_switch",
+            "Entity Point": "state",
+            "Volttron Point Name": "switch_state",
+            "Units": "On / Off",
+            "Writable": True,
+            "Type": "int",
+        }
+    ]
+
+
+class TestSwitchMocked:
+    """Mocked unit tests for Switch entity write-access. No real Home Assistant required."""
+
+    def test_turn_on_switch(self, mock_interface):
+        """Test turn_on_switch method calls correct API endpoint."""
+        with patch('platform_driver.interfaces.home_assistant.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+
+            mock_interface.turn_on_switch("switch.test_switch")
+
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert "/api/services/switch/turn_on" in call_args[0][0]
+            assert call_args[1]['json']['entity_id'] == "switch.test_switch"
+
+    def test_turn_off_switch(self, mock_interface):
+        """Test turn_off_switch method calls correct API endpoint."""
+        with patch('platform_driver.interfaces.home_assistant.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+
+            mock_interface.turn_off_switch("switch.test_switch")
+
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert "/api/services/switch/turn_off" in call_args[0][0]
+            assert call_args[1]['json']['entity_id'] == "switch.test_switch"
+
+    def test_turn_on_switch_invalid_entity(self, mock_interface):
+        """Test turn_on_switch rejects non-switch entities."""
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface.turn_on_switch("light.test_light")
+        assert "not a valid switch entity ID" in str(exc_info.value)
+
+    def test_turn_off_switch_invalid_entity(self, mock_interface):
+        """Test turn_off_switch rejects non-switch entities."""
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface.turn_off_switch("fan.test_fan")
+        assert "not a valid switch entity ID" in str(exc_info.value)
+
+    def test_set_point_switch_state_on(self, mock_interface, switch_registry_config):
+        """Test _set_point for switch state on."""
+        mock_interface.parse_config(switch_registry_config)
+
+        with patch.object(mock_interface, 'turn_on_switch') as mock_turn_on:
+            result = mock_interface._set_point("switch_state", 1)
+            mock_turn_on.assert_called_once_with("switch.test_switch")
+            assert result == 1
+
+    def test_set_point_switch_state_off(self, mock_interface, switch_registry_config):
+        """Test _set_point for switch state off."""
+        mock_interface.parse_config(switch_registry_config)
+
+        with patch.object(mock_interface, 'turn_off_switch') as mock_turn_off:
+            result = mock_interface._set_point("switch_state", 0)
+            mock_turn_off.assert_called_once_with("switch.test_switch")
+            assert result == 0
+
+    def test_set_point_switch_state_invalid(self, mock_interface, switch_registry_config):
+        """Test _set_point rejects invalid switch state values."""
+        mock_interface.parse_config(switch_registry_config)
+
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface._set_point("switch_state", 5)
+        assert "should be an integer value of 1 or 0" in str(exc_info.value)
+
+    def test_scrape_all_switch_state_on(self, mock_interface, switch_registry_config):
+        """Test _scrape_all correctly reads switch state as on."""
+        mock_interface.parse_config(switch_registry_config)
+
+        mock_entity_data = {
+            "state": "on",
+            "attributes": {}
+        }
+
+        with patch.object(mock_interface, 'get_entity_data', return_value=mock_entity_data):
+            result = mock_interface._scrape_all()
+            assert result['switch_state'] == 1
+
+    def test_scrape_all_switch_state_off(self, mock_interface, switch_registry_config):
+        """Test _scrape_all correctly reads switch state as off."""
+        mock_interface.parse_config(switch_registry_config)
+
+        mock_entity_data = {
+            "state": "off",
+            "attributes": {}
+        }
+
+        with patch.object(mock_interface, 'get_entity_data', return_value=mock_entity_data):
+            result = mock_interface._scrape_all()
+            assert result['switch_state'] == 0
+
+
+# ============================================================================
+# Cover Unit Tests (Mocked - No Real Home Assistant Required)
+# ============================================================================
+
+@pytest.fixture
+def cover_registry_config():
+    """Cover registry configuration for testing."""
+    return [
+        {
+            "Entity ID": "cover.test_cover",
+            "Entity Point": "state",
+            "Volttron Point Name": "cover_state",
+            "Units": "Open / Closed / Stop",
+            "Writable": True,
+            "Type": "int",
+        },
+        {
+            "Entity ID": "cover.test_cover",
+            "Entity Point": "current_position",
+            "Volttron Point Name": "cover_position",
+            "Units": "%",
+            "Writable": True,
+            "Type": "int",
+        },
+        {
+            "Entity ID": "cover.test_cover",
+            "Entity Point": "current_tilt_position",
+            "Volttron Point Name": "cover_tilt",
+            "Units": "%",
+            "Writable": True,
+            "Type": "int",
+        }
+    ]
+
+
+class TestCoverMocked:
+    """Mocked unit tests for Cover entity write-access. No real Home Assistant required."""
+
+    def test_open_cover(self, mock_interface):
+        """Test open_cover method calls correct API endpoint."""
+        with patch('platform_driver.interfaces.home_assistant.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+
+            mock_interface.open_cover("cover.test_cover")
+
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert "/api/services/cover/open_cover" in call_args[0][0]
+            assert call_args[1]['json']['entity_id'] == "cover.test_cover"
+
+    def test_close_cover(self, mock_interface):
+        """Test close_cover method calls correct API endpoint."""
+        with patch('platform_driver.interfaces.home_assistant.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+
+            mock_interface.close_cover("cover.test_cover")
+
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert "/api/services/cover/close_cover" in call_args[0][0]
+            assert call_args[1]['json']['entity_id'] == "cover.test_cover"
+
+    def test_stop_cover(self, mock_interface):
+        """Test stop_cover method calls correct API endpoint."""
+        with patch('platform_driver.interfaces.home_assistant.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+
+            mock_interface.stop_cover("cover.test_cover")
+
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert "/api/services/cover/stop_cover" in call_args[0][0]
+            assert call_args[1]['json']['entity_id'] == "cover.test_cover"
+
+    def test_set_cover_position(self, mock_interface):
+        """Test set_cover_position method calls correct API endpoint."""
+        with patch('platform_driver.interfaces.home_assistant.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+
+            mock_interface.set_cover_position("cover.test_cover", 50)
+
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert "/api/services/cover/set_cover_position" in call_args[0][0]
+            assert call_args[1]['json']['entity_id'] == "cover.test_cover"
+            assert call_args[1]['json']['position'] == 50
+
+    def test_set_cover_position_invalid_range(self, mock_interface):
+        """Test set_cover_position rejects out of range values."""
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface.set_cover_position("cover.test_cover", 150)
+        assert "between 0 and 100" in str(exc_info.value)
+
+    def test_set_cover_position_negative(self, mock_interface):
+        """Test set_cover_position rejects negative values."""
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface.set_cover_position("cover.test_cover", -10)
+        assert "between 0 and 100" in str(exc_info.value)
+
+    def test_set_cover_position_invalid_entity(self, mock_interface):
+        """Test set_cover_position rejects non-cover entities."""
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface.set_cover_position("light.test", 50)
+        assert "not a valid cover entity ID" in str(exc_info.value)
+
+    def test_set_cover_tilt_position(self, mock_interface):
+        """Test set_cover_tilt_position method calls correct API endpoint."""
+        with patch('platform_driver.interfaces.home_assistant.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
+
+            mock_interface.set_cover_tilt_position("cover.test_cover", 75)
+
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert "/api/services/cover/set_cover_tilt_position" in call_args[0][0]
+            assert call_args[1]['json']['entity_id'] == "cover.test_cover"
+            assert call_args[1]['json']['tilt_position'] == 75
+
+    def test_set_cover_tilt_invalid_range(self, mock_interface):
+        """Test set_cover_tilt_position rejects out of range values."""
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface.set_cover_tilt_position("cover.test_cover", 101)
+        assert "between 0 and 100" in str(exc_info.value)
+
+    def test_open_cover_invalid_entity(self, mock_interface):
+        """Test open_cover rejects non-cover entities."""
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface.open_cover("switch.test")
+        assert "not a valid cover entity ID" in str(exc_info.value)
+
+    def test_set_point_cover_close(self, mock_interface, cover_registry_config):
+        """Test _set_point for cover close."""
+        mock_interface.parse_config(cover_registry_config)
+
+        with patch.object(mock_interface, 'close_cover') as mock_close:
+            result = mock_interface._set_point("cover_state", 0)
+            mock_close.assert_called_once_with("cover.test_cover")
+            assert result == 0
+
+    def test_set_point_cover_open(self, mock_interface, cover_registry_config):
+        """Test _set_point for cover open."""
+        mock_interface.parse_config(cover_registry_config)
+
+        with patch.object(mock_interface, 'open_cover') as mock_open:
+            result = mock_interface._set_point("cover_state", 1)
+            mock_open.assert_called_once_with("cover.test_cover")
+            assert result == 1
+
+    def test_set_point_cover_stop(self, mock_interface, cover_registry_config):
+        """Test _set_point for cover stop."""
+        mock_interface.parse_config(cover_registry_config)
+
+        with patch.object(mock_interface, 'stop_cover') as mock_stop:
+            result = mock_interface._set_point("cover_state", 2)
+            mock_stop.assert_called_once_with("cover.test_cover")
+            assert result == 2
+
+    def test_set_point_cover_state_invalid(self, mock_interface, cover_registry_config):
+        """Test _set_point rejects invalid cover state values."""
+        mock_interface.parse_config(cover_registry_config)
+
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface._set_point("cover_state", 5)
+        assert "Cover state should be an integer value" in str(exc_info.value)
+
+    def test_set_point_cover_position(self, mock_interface, cover_registry_config):
+        """Test _set_point for cover position."""
+        mock_interface.parse_config(cover_registry_config)
+
+        with patch.object(mock_interface, 'set_cover_position') as mock_set_pos:
+            result = mock_interface._set_point("cover_position", 75)
+            mock_set_pos.assert_called_once_with("cover.test_cover", 75)
+            assert result == 75
+
+    def test_set_point_cover_position_invalid(self, mock_interface, cover_registry_config):
+        """Test _set_point rejects invalid cover position values."""
+        mock_interface.parse_config(cover_registry_config)
+
+        with pytest.raises(ValueError) as exc_info:
+            mock_interface._set_point("cover_position", 150)
+        assert "between 0 and 100" in str(exc_info.value)
+
+    def test_set_point_cover_tilt(self, mock_interface, cover_registry_config):
+        """Test _set_point for cover tilt position."""
+        mock_interface.parse_config(cover_registry_config)
+
+        with patch.object(mock_interface, 'set_cover_tilt_position') as mock_set_tilt:
+            result = mock_interface._set_point("cover_tilt", 50)
+            mock_set_tilt.assert_called_once_with("cover.test_cover", 50)
+            assert result == 50
+
+    def test_scrape_all_cover_open(self, mock_interface, cover_registry_config):
+        """Test _scrape_all correctly reads cover state as open."""
+        mock_interface.parse_config(cover_registry_config)
+
+        mock_entity_data = {
+            "state": "open",
+            "attributes": {
+                "current_position": 100,
+                "current_tilt_position": 0
+            }
+        }
+
+        with patch.object(mock_interface, 'get_entity_data', return_value=mock_entity_data):
+            result = mock_interface._scrape_all()
+            assert result['cover_state'] == 1
+            assert result['cover_position'] == 100
+            assert result['cover_tilt'] == 0
+
+    def test_scrape_all_cover_closed(self, mock_interface, cover_registry_config):
+        """Test _scrape_all correctly reads cover state as closed."""
+        mock_interface.parse_config(cover_registry_config)
+
+        mock_entity_data = {
+            "state": "closed",
+            "attributes": {
+                "current_position": 0,
+                "current_tilt_position": 0
+            }
+        }
+
+        with patch.object(mock_interface, 'get_entity_data', return_value=mock_entity_data):
+            result = mock_interface._scrape_all()
+            assert result['cover_state'] == 0
+            assert result['cover_position'] == 0
+
+    def test_scrape_all_cover_opening(self, mock_interface, cover_registry_config):
+        """Test _scrape_all correctly reads cover state as opening."""
+        mock_interface.parse_config(cover_registry_config)
+
+        mock_entity_data = {
+            "state": "opening",
+            "attributes": {
+                "current_position": 50,
+                "current_tilt_position": 0
+            }
+        }
+
+        with patch.object(mock_interface, 'get_entity_data', return_value=mock_entity_data):
+            result = mock_interface._scrape_all()
+            assert result['cover_state'] == 1  # opening maps to 1
+            assert result['cover_position'] == 50
+
+    def test_scrape_all_cover_closing(self, mock_interface, cover_registry_config):
+        """Test _scrape_all correctly reads cover state as closing."""
+        mock_interface.parse_config(cover_registry_config)
+
+        mock_entity_data = {
+            "state": "closing",
+            "attributes": {
+                "current_position": 25,
+                "current_tilt_position": 0
+            }
+        }
+
+        with patch.object(mock_interface, 'get_entity_data', return_value=mock_entity_data):
+            result = mock_interface._scrape_all()
+            assert result['cover_state'] == 0  # closing maps to 0
+            assert result['cover_position'] == 25
+
+
+# ============================================================================
+# Switch Integration Tests (Requires Real Home Assistant with Switch Entity)
+# ============================================================================
+# To run these tests:
+# 1. Set HOMEASSISTANT_TEST_IP, ACCESS_TOKEN, PORT
+# 2. Set SWITCH_TEST_ENTITY_ID to your switch entity (e.g., "switch.living_room_switch")
+
+@pytest.fixture(scope="module")
+def switch_config_store(volttron_instance, platform_driver):
+    """Configure the platform driver with switch entity registry for integration tests."""
+    capabilities = [{"edit_config_store": {"identity": PLATFORM_DRIVER}}]
+    volttron_instance.add_capabilities(volttron_instance.dynamic_agent.core.publickey, capabilities)
+
+    registry_config = "homeassistant_switch_test.json"
+    registry_obj = [
+        {
+            "Entity ID": SWITCH_TEST_ENTITY_ID,
+            "Entity Point": "state",
+            "Volttron Point Name": "switch_state",
+            "Units": "On / Off",
+            "Units Details": "off: 0, on: 1",
+            "Writable": True,
+            "Starting Value": 0,
+            "Type": "int",
+            "Notes": "Switch on/off state"
+        }
+    ]
+
+    volttron_instance.dynamic_agent.vip.rpc.call(
+        CONFIGURATION_STORE,
+        "manage_store",
+        PLATFORM_DRIVER,
+        registry_config,
+        json.dumps(registry_obj),
+        config_type="json"
+    )
+    gevent.sleep(2)
+
+    # driver config
+    driver_config = {
+        "driver_config": {"ip_address": HOMEASSISTANT_TEST_IP, "access_token": ACCESS_TOKEN, "port": PORT},
+        "driver_type": "home_assistant",
+        "registry_config": f"config://{registry_config}",
+        "timezone": "US/Pacific",
+        "interval": 30,
+    }
+
+    volttron_instance.dynamic_agent.vip.rpc.call(
+        CONFIGURATION_STORE,
+        "manage_store",
+        PLATFORM_DRIVER,
+        SWITCH_DEVICE_TOPIC,
+        json.dumps(driver_config),
+        config_type="json"
+    )
+    gevent.sleep(2)
+
+    yield platform_driver
+
+    print("Wiping out switch store.")
+    volttron_instance.dynamic_agent.vip.rpc.call(CONFIGURATION_STORE, "manage_delete_store", PLATFORM_DRIVER)
+    gevent.sleep(0.1)
+
+
+@requires_switch_entity
+def test_switch_get_point(volttron_instance, switch_config_store):
+    """Test getting switch state from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_switch', 'switch_state').get(timeout=20)
+    assert result in [0, 1], f"Switch state should be 0 or 1, got {result}"
+
+
+@requires_switch_entity
+def test_switch_data_poll(volttron_instance: PlatformWrapper, switch_config_store):
+    """Test scraping all switch data from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_switch').get(timeout=20)
+    assert 'switch_state' in result, "switch_state should be in scrape_all result"
+    assert result['switch_state'] in [0, 1], f"Switch state should be 0 or 1, got {result['switch_state']}"
+
+
+@requires_switch_entity
+def test_switch_set_state_on(volttron_instance, switch_config_store):
+    """Test turning on switch via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_switch', 'switch_state', 1)
+    gevent.sleep(5)
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_switch').get(timeout=20)
+    assert result['switch_state'] == 1, f"Switch should be on (1), got {result['switch_state']}"
+
+
+@requires_switch_entity
+def test_switch_set_state_off(volttron_instance, switch_config_store):
+    """Test turning off switch via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_switch', 'switch_state', 0)
+    gevent.sleep(5)
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_switch').get(timeout=20)
+    assert result['switch_state'] == 0, f"Switch should be off (0), got {result['switch_state']}"
+
+
+# ============================================================================
+# Cover Integration Tests (Requires Real Home Assistant with Cover Entity)
+# ============================================================================
+# To run these tests:
+# 1. Set HOMEASSISTANT_TEST_IP, ACCESS_TOKEN, PORT
+# 2. Set COVER_TEST_ENTITY_ID to your cover entity (e.g., "cover.living_room_blinds")
+
+@pytest.fixture(scope="module")
+def cover_config_store(volttron_instance, platform_driver):
+    """Configure the platform driver with cover entity registry for integration tests."""
+    capabilities = [{"edit_config_store": {"identity": PLATFORM_DRIVER}}]
+    volttron_instance.add_capabilities(volttron_instance.dynamic_agent.core.publickey, capabilities)
+
+    registry_config = "homeassistant_cover_test.json"
+    registry_obj = [
+        {
+            "Entity ID": COVER_TEST_ENTITY_ID,
+            "Entity Point": "state",
+            "Volttron Point Name": "cover_state",
+            "Units": "Open / Closed / Stop",
+            "Units Details": "closed: 0, open: 1, stop: 2",
+            "Writable": True,
+            "Starting Value": 0,
+            "Type": "int",
+            "Notes": "Cover state control"
+        },
+        {
+            "Entity ID": COVER_TEST_ENTITY_ID,
+            "Entity Point": "current_position",
+            "Volttron Point Name": "cover_position",
+            "Units": "Percentage",
+            "Units Details": "0-100, where 0=closed and 100=fully open",
+            "Writable": True,
+            "Starting Value": 0,
+            "Type": "int",
+            "Notes": "Cover position control (0-100)"
+        },
+        {
+            "Entity ID": COVER_TEST_ENTITY_ID,
+            "Entity Point": "current_tilt_position",
+            "Volttron Point Name": "cover_tilt",
+            "Units": "Percentage",
+            "Units Details": "0-100, tilt angle",
+            "Writable": True,
+            "Starting Value": 0,
+            "Type": "int",
+            "Notes": "Cover tilt position (0-100)"
+        }
+    ]
+
+    volttron_instance.dynamic_agent.vip.rpc.call(
+        CONFIGURATION_STORE,
+        "manage_store",
+        PLATFORM_DRIVER,
+        registry_config,
+        json.dumps(registry_obj),
+        config_type="json"
+    )
+    gevent.sleep(2)
+
+    # driver config
+    driver_config = {
+        "driver_config": {"ip_address": HOMEASSISTANT_TEST_IP, "access_token": ACCESS_TOKEN, "port": PORT},
+        "driver_type": "home_assistant",
+        "registry_config": f"config://{registry_config}",
+        "timezone": "US/Pacific",
+        "interval": 30,
+    }
+
+    volttron_instance.dynamic_agent.vip.rpc.call(
+        CONFIGURATION_STORE,
+        "manage_store",
+        PLATFORM_DRIVER,
+        COVER_DEVICE_TOPIC,
+        json.dumps(driver_config),
+        config_type="json"
+    )
+    gevent.sleep(2)
+
+    yield platform_driver
+
+    print("Wiping out cover store.")
+    volttron_instance.dynamic_agent.vip.rpc.call(CONFIGURATION_STORE, "manage_delete_store", PLATFORM_DRIVER)
+    gevent.sleep(0.1)
+
+
+@requires_cover_entity
+def test_cover_get_state(volttron_instance, cover_config_store):
+    """Test getting cover state from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_state').get(timeout=20)
+    assert result in [0, 1], f"Cover state should be 0 or 1, got {result}"
+
+
+@requires_cover_entity
+def test_cover_get_position(volttron_instance, cover_config_store):
+    """Test getting cover position from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_position').get(timeout=20)
+    assert isinstance(result, (int, float)) and 0 <= result <= 100, f"Cover position should be 0-100, got {result}"
+
+
+@requires_cover_entity
+def test_cover_data_poll(volttron_instance: PlatformWrapper, cover_config_store):
+    """Test scraping all cover data from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_cover').get(timeout=20)
+    assert 'cover_state' in result, "cover_state should be in scrape_all result"
+    assert 'cover_position' in result, "cover_position should be in scrape_all result"
+    assert result['cover_state'] in [0, 1], f"Cover state should be 0 or 1, got {result['cover_state']}"
+
+
+@requires_cover_entity
+def test_cover_open(volttron_instance, cover_config_store):
+    """Test opening cover via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_state', 1)
+    gevent.sleep(10)  # Wait for cover to open
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_state').get(timeout=20)
+    assert result == 1, f"Cover should be open (1), got {result}"
+
+
+@requires_cover_entity
+def test_cover_close(volttron_instance, cover_config_store):
+    """Test closing cover via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_state', 0)
+    gevent.sleep(10)  # Wait for cover to close
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_state').get(timeout=20)
+    assert result == 0, f"Cover should be closed (0), got {result}"
+
+
+@requires_cover_entity
+def test_cover_set_position(volttron_instance, cover_config_store):
+    """Test setting cover position via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    # Set cover to 50% position
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_position', 50)
+    gevent.sleep(10)  # Wait for cover to move
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_position').get(timeout=20)
+    # Allow some tolerance for position (within 10%)
+    assert 40 <= result <= 60, f"Cover position should be around 50, got {result}"
+    # Clean up - close cover
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_state', 0)

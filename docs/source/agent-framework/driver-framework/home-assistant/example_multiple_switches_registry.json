@@ -1,0 +1,35 @@
+[
+    {
+        "Entity ID": "switch.living_room_outlet",
+        "Entity Point": "state",
+        "Volttron Point Name": "living_room_outlet_state",
+        "Units": "On / Off",
+        "Units Details": "off: 0, on: 1",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Living room outlet control"
+    },
+    {
+        "Entity ID": "switch.bedroom_outlet",
+        "Entity Point": "state",
+        "Volttron Point Name": "bedroom_outlet_state",
+        "Units": "On / Off",
+        "Units Details": "off: 0, on: 1",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Bedroom outlet control"
+    },
+    {
+        "Entity ID": "switch.garage_door_opener",
+        "Entity Point": "state",
+        "Volttron Point Name": "garage_opener_state",
+        "Units": "On / Off",
+        "Units Details": "off: 0, on: 1",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Garage door opener control"
+    }
+]

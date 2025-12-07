@@ -1,0 +1,35 @@
+[
+    {
+        "Entity ID": "cover.living_room_blinds",
+        "Entity Point": "state",
+        "Volttron Point Name": "blinds_state",
+        "Units": "Enumeration",
+        "Units Details": "0: Close, 1: Open, 2: Stop",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Control to open/close/stop the blinds"
+    },
+    {
+        "Entity ID": "cover.living_room_blinds",
+        "Entity Point": "current_position",
+        "Volttron Point Name": "blinds_position",
+        "Units": "Percentage",
+        "Units Details": "0-100, where 0=closed and 100=fully open",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Position control (0-100)"
+    },
+    {
+        "Entity ID": "cover.living_room_blinds",
+        "Entity Point": "current_tilt_position",
+        "Volttron Point Name": "blinds_tilt",
+        "Units": "Percentage",
+        "Units Details": "0-100, tilt angle control",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Tilt position for venetian blinds (0-100)"
+    }
+]

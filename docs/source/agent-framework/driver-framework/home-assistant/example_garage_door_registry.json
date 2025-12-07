@@ -1,0 +1,24 @@
+[
+    {
+        "Entity ID": "cover.garage_door",
+        "Entity Point": "state",
+        "Volttron Point Name": "garage_state",
+        "Units": "Enumeration",
+        "Units Details": "0: Close, 1: Open, 2: Stop",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Garage door control"
+    },
+    {
+        "Entity ID": "cover.garage_door",
+        "Entity Point": "current_position",
+        "Volttron Point Name": "garage_position",
+        "Units": "Percentage",
+        "Units Details": "0-100, door position",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Position allows partial opening"
+    }
+]
