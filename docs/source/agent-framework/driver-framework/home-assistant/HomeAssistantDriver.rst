@@ -321,6 +321,81 @@ The driver supports all Home Assistant cover types including: awning, blind, cur
 
    Check your specific device's capabilities in the Home Assistant Developer Tools > States panel.
 
+Example Fan Registry
+***************************
+
+Fans are multi-function devices that can be controlled via:
+
+- **state**: 0 = off, 1 = on
+- **percentage**: 0-100, speed level
+- **preset_mode**: device-specific presets (e.g., auto, sleep, nature)
+- **direction**: forward / reverse
+- **oscillating**: 0 = off, 1 = on (or False/True)
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "fan.living_room_fan",
+           "Entity Point": "state",
+           "Volttron Point Name": "fan_state",
+           "Units": "On / Off",
+           "Units Details": "off: 0, on: 1",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Power on/off"
+       },
+       {
+           "Entity ID": "fan.living_room_fan",
+           "Entity Point": "percentage",
+           "Volttron Point Name": "fan_speed",
+           "Units": "%",
+           "Units Details": "0-100",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Speed percentage"
+       },
+       {
+           "Entity ID": "fan.living_room_fan",
+           "Entity Point": "preset_mode",
+           "Volttron Point Name": "fan_preset",
+           "Units": "Preset",
+           "Units Details": "device-specific (e.g., auto, sleep)",
+           "Writable": true,
+           "Starting Value": "",
+           "Type": "string",
+           "Notes": "Preset mode"
+       },
+       {
+           "Entity ID": "fan.living_room_fan",
+           "Entity Point": "direction",
+           "Volttron Point Name": "fan_direction",
+           "Units": "Direction",
+           "Units Details": "forward, reverse",
+           "Writable": true,
+           "Starting Value": "forward",
+           "Type": "string",
+           "Notes": "Rotation direction"
+       },
+       {
+           "Entity ID": "fan.living_room_fan",
+           "Entity Point": "oscillating",
+           "Volttron Point Name": "fan_oscillating",
+           "Units": "On / Off",
+           "Units Details": "off: 0, on: 1",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Oscillation control"
+       }
+   ]
+
+.. note::
+
+   Not all fans support all points. Check the fan entity in Home Assistant Developer Tools > States to see available attributes (e.g., supported preset modes or direction).
+
 
 Transfer the registers files and the config files into the VOLTTRON config store using the commands below:
 
@@ -412,17 +487,9 @@ Integration tests require a live Home Assistant instance with actual devices/hel
     # Run all tests (unit + integration)
     pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py -v
 
-**Test Summary:**
+**Test Summary (high level):**
 
-- **Unit Tests**: 70+ tests (no Home Assistant required)
+- **Unit Tests (mocked; no Home Assistant needed):** cover fan, switch, and cover write-access and validation.
+- **Integration Tests (require Home Assistant):** basic toggle helper + device-specific fan/switch/cover flows when entity IDs and credentials are provided.
 
-  - Fan: 35 tests
-  - Switch: 11 tests
-  - Cover: 24 tests
-
-- **Integration Tests**: 21+ tests (require Home Assistant)
-
-  - Basic: 3 tests
-  - Fan: 7 tests
-  - Switch: 4 tests
-  - Cover: 6 tests
+Refer to the individual test classes in ``services/core/PlatformDriverAgent/tests/test_home_assistant.py`` for the exact test coverage per device type.

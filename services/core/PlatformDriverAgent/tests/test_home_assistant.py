@@ -352,6 +352,252 @@ def test_fan_set_oscillation(volttron_instance, fan_config_store):
     # Clean up - turn off fan
     agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_fan', 'fan_state', 0)
 
+# ============================================================================
+# Switch Integration Tests (Requires Real Home Assistant with Switch Entity)
+# ============================================================================
+# To run these tests:
+# 1. Set HOMEASSISTANT_TEST_IP, ACCESS_TOKEN, PORT
+# 2. Set SWITCH_TEST_ENTITY_ID to your switch entity (e.g., "switch.living_room_switch")
+
+@pytest.fixture(scope="module")
+def switch_config_store(volttron_instance, platform_driver):
+    """Configure the platform driver with switch entity registry for integration tests."""
+    capabilities = [{"edit_config_store": {"identity": PLATFORM_DRIVER}}]
+    volttron_instance.add_capabilities(volttron_instance.dynamic_agent.core.publickey, capabilities)
+
+    registry_config = "homeassistant_switch_test.json"
+    registry_obj = [
+        {
+            "Entity ID": SWITCH_TEST_ENTITY_ID,
+            "Entity Point": "state",
+            "Volttron Point Name": "switch_state",
+            "Units": "On / Off",
+            "Units Details": "off: 0, on: 1",
+            "Writable": True,
+            "Starting Value": 0,
+            "Type": "int",
+            "Notes": "Switch on/off state"
+        }
+    ]
+
+    volttron_instance.dynamic_agent.vip.rpc.call(
+        CONFIGURATION_STORE,
+        "manage_store",
+        PLATFORM_DRIVER,
+        registry_config,
+        json.dumps(registry_obj),
+        config_type="json"
+    )
+    gevent.sleep(2)
+
+    # driver config
+    driver_config = {
+        "driver_config": {"ip_address": HOMEASSISTANT_TEST_IP, "access_token": ACCESS_TOKEN, "port": PORT},
+        "driver_type": "home_assistant",
+        "registry_config": f"config://{registry_config}",
+        "timezone": "US/Pacific",
+        "interval": 30,
+    }
+
+    volttron_instance.dynamic_agent.vip.rpc.call(
+        CONFIGURATION_STORE,
+        "manage_store",
+        PLATFORM_DRIVER,
+        SWITCH_DEVICE_TOPIC,
+        json.dumps(driver_config),
+        config_type="json"
+    )
+    gevent.sleep(2)
+
+    yield platform_driver
+
+    print("Wiping out switch store.")
+    volttron_instance.dynamic_agent.vip.rpc.call(CONFIGURATION_STORE, "manage_delete_store", PLATFORM_DRIVER)
+    gevent.sleep(0.1)
+
+
+@requires_switch_entity
+def test_switch_get_point(volttron_instance, switch_config_store):
+    """Test getting switch state from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_switch', 'switch_state').get(timeout=20)
+    assert result in [0, 1], f"Switch state should be 0 or 1, got {result}"
+
+
+@requires_switch_entity
+def test_switch_data_poll(volttron_instance: PlatformWrapper, switch_config_store):
+    """Test scraping all switch data from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_switch').get(timeout=20)
+    assert 'switch_state' in result, "switch_state should be in scrape_all result"
+    assert result['switch_state'] in [0, 1], f"Switch state should be 0 or 1, got {result['switch_state']}"
+
+
+@requires_switch_entity
+def test_switch_set_state_on(volttron_instance, switch_config_store):
+    """Test turning on switch via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_switch', 'switch_state', 1)
+    gevent.sleep(5)
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_switch').get(timeout=20)
+    assert result['switch_state'] == 1, f"Switch should be on (1), got {result['switch_state']}"
+
+
+@requires_switch_entity
+def test_switch_set_state_off(volttron_instance, switch_config_store):
+    """Test turning off switch via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_switch', 'switch_state', 0)
+    gevent.sleep(5)
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_switch').get(timeout=20)
+    assert result['switch_state'] == 0, f"Switch should be off (0), got {result['switch_state']}"
+
+
+# ============================================================================
+# Cover Integration Tests (Requires Real Home Assistant with Cover Entity)
+# ============================================================================
+# To run these tests:
+# 1. Set HOMEASSISTANT_TEST_IP, ACCESS_TOKEN, PORT
+# 2. Set COVER_TEST_ENTITY_ID to your cover entity (e.g., "cover.living_room_blinds")
+
+@pytest.fixture(scope="module")
+def cover_config_store(volttron_instance, platform_driver):
+    """Configure the platform driver with cover entity registry for integration tests."""
+    capabilities = [{"edit_config_store": {"identity": PLATFORM_DRIVER}}]
+    volttron_instance.add_capabilities(volttron_instance.dynamic_agent.core.publickey, capabilities)
+
+    registry_config = "homeassistant_cover_test.json"
+    registry_obj = [
+        {
+            "Entity ID": COVER_TEST_ENTITY_ID,
+            "Entity Point": "state",
+            "Volttron Point Name": "cover_state",
+            "Units": "Open / Closed / Stop",
+            "Units Details": "closed: 0, open: 1, stop: 2",
+            "Writable": True,
+            "Starting Value": 0,
+            "Type": "int",
+            "Notes": "Cover state control"
+        },
+        {
+            "Entity ID": COVER_TEST_ENTITY_ID,
+            "Entity Point": "current_position",
+            "Volttron Point Name": "cover_position",
+            "Units": "Percentage",
+            "Units Details": "0-100, where 0=closed and 100=fully open",
+            "Writable": True,
+            "Starting Value": 0,
+            "Type": "int",
+            "Notes": "Cover position control (0-100)"
+        },
+        {
+            "Entity ID": COVER_TEST_ENTITY_ID,
+            "Entity Point": "current_tilt_position",
+            "Volttron Point Name": "cover_tilt",
+            "Units": "Percentage",
+            "Units Details": "0-100, tilt angle",
+            "Writable": True,
+            "Starting Value": 0,
+            "Type": "int",
+            "Notes": "Cover tilt position (0-100)"
+        }
+    ]
+
+    volttron_instance.dynamic_agent.vip.rpc.call(
+        CONFIGURATION_STORE,
+        "manage_store",
+        PLATFORM_DRIVER,
+        registry_config,
+        json.dumps(registry_obj),
+        config_type="json"
+    )
+    gevent.sleep(2)
+
+    # driver config
+    driver_config = {
+        "driver_config": {"ip_address": HOMEASSISTANT_TEST_IP, "access_token": ACCESS_TOKEN, "port": PORT},
+        "driver_type": "home_assistant",
+        "registry_config": f"config://{registry_config}",
+        "timezone": "US/Pacific",
+        "interval": 30,
+    }
+
+    volttron_instance.dynamic_agent.vip.rpc.call(
+        CONFIGURATION_STORE,
+        "manage_store",
+        PLATFORM_DRIVER,
+        COVER_DEVICE_TOPIC,
+        json.dumps(driver_config),
+        config_type="json"
+    )
+    gevent.sleep(2)
+
+    yield platform_driver
+
+    print("Wiping out cover store.")
+    volttron_instance.dynamic_agent.vip.rpc.call(CONFIGURATION_STORE, "manage_delete_store", PLATFORM_DRIVER)
+    gevent.sleep(0.1)
+
+
+@requires_cover_entity
+def test_cover_get_state(volttron_instance, cover_config_store):
+    """Test getting cover state from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_state').get(timeout=20)
+    assert result in [0, 1], f"Cover state should be 0 or 1, got {result}"
+
+
+@requires_cover_entity
+def test_cover_get_position(volttron_instance, cover_config_store):
+    """Test getting cover position from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_position').get(timeout=20)
+    assert isinstance(result, (int, float)) and 0 <= result <= 100, f"Cover position should be 0-100, got {result}"
+
+
+@requires_cover_entity
+def test_cover_data_poll(volttron_instance: PlatformWrapper, cover_config_store):
+    """Test scraping all cover data from real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_cover').get(timeout=20)
+    assert 'cover_state' in result, "cover_state should be in scrape_all result"
+    assert 'cover_position' in result, "cover_position should be in scrape_all result"
+    assert result['cover_state'] in [0, 1], f"Cover state should be 0 or 1, got {result['cover_state']}"
+
+
+@requires_cover_entity
+def test_cover_open(volttron_instance, cover_config_store):
+    """Test opening cover via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_state', 1)
+    gevent.sleep(10)  # Wait for cover to open
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_state').get(timeout=20)
+    assert result == 1, f"Cover should be open (1), got {result}"
+
+
+@requires_cover_entity
+def test_cover_close(volttron_instance, cover_config_store):
+    """Test closing cover via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_state', 0)
+    gevent.sleep(10)  # Wait for cover to close
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_state').get(timeout=20)
+    assert result == 0, f"Cover should be closed (0), got {result}"
+
+
+@requires_cover_entity
+def test_cover_set_position(volttron_instance, cover_config_store):
+    """Test setting cover position via real Home Assistant."""
+    agent = volttron_instance.dynamic_agent
+    # Set cover to 50% position
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_position', 50)
+    gevent.sleep(10)  # Wait for cover to move
+    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_position').get(timeout=20)
+    # Allow some tolerance for position (within 10%)
+    assert 40 <= result <= 60, f"Cover position should be around 50, got {result}"
+    # Clean up - close cover
+    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_state', 0)
+
 
 # ============================================================================
 # Fan Unit Tests (Mocked - No Real Home Assistant Required)
@@ -600,7 +846,7 @@ class TestFanMocked:
 
         with pytest.raises(ValueError) as exc_info:
             mock_interface._set_point("fan_state", 5)
-        assert "should be an integer value of 1 or 0" in str(exc_info.value)
+        assert "should be an integer from (0, 1)" in str(exc_info.value)
 
     def test_set_point_fan_percentage(self, mock_interface, fan_registry_config):
         """Test _set_point for fan percentage."""
@@ -617,7 +863,7 @@ class TestFanMocked:
 
         with pytest.raises(ValueError) as exc_info:
             mock_interface._set_point("fan_percentage", 150)
-        assert "should be an integer between 0 and 100" in str(exc_info.value)
+        assert "should be between 0 and 100" in str(exc_info.value)
 
     def test_set_point_fan_preset_mode(self, mock_interface, fan_registry_config):
         """Test _set_point for fan preset mode."""
@@ -811,7 +1057,7 @@ class TestSwitchMocked:
 
         with pytest.raises(ValueError) as exc_info:
             mock_interface._set_point("switch_state", 5)
-        assert "should be an integer value of 1 or 0" in str(exc_info.value)
+        assert "should be an integer from (0, 1)" in str(exc_info.value)
 
     def test_scrape_all_switch_state_on(self, mock_interface, switch_registry_config):
         """Test _scrape_all correctly reads switch state as on."""
@@ -1003,7 +1249,7 @@ class TestCoverMocked:
 
         with pytest.raises(ValueError) as exc_info:
             mock_interface._set_point("cover_state", 5)
-        assert "Cover state should be an integer value" in str(exc_info.value)
+        assert "should be an integer from (0, 1, 2)" in str(exc_info.value)
 
     def test_set_point_cover_position(self, mock_interface, cover_registry_config):
         """Test _set_point for cover position."""
@@ -1101,248 +1347,3 @@ class TestCoverMocked:
             assert result['cover_position'] == 25
 
 
-# ============================================================================
-# Switch Integration Tests (Requires Real Home Assistant with Switch Entity)
-# ============================================================================
-# To run these tests:
-# 1. Set HOMEASSISTANT_TEST_IP, ACCESS_TOKEN, PORT
-# 2. Set SWITCH_TEST_ENTITY_ID to your switch entity (e.g., "switch.living_room_switch")
-
-@pytest.fixture(scope="module")
-def switch_config_store(volttron_instance, platform_driver):
-    """Configure the platform driver with switch entity registry for integration tests."""
-    capabilities = [{"edit_config_store": {"identity": PLATFORM_DRIVER}}]
-    volttron_instance.add_capabilities(volttron_instance.dynamic_agent.core.publickey, capabilities)
-
-    registry_config = "homeassistant_switch_test.json"
-    registry_obj = [
-        {
-            "Entity ID": SWITCH_TEST_ENTITY_ID,
-            "Entity Point": "state",
-            "Volttron Point Name": "switch_state",
-            "Units": "On / Off",
-            "Units Details": "off: 0, on: 1",
-            "Writable": True,
-            "Starting Value": 0,
-            "Type": "int",
-            "Notes": "Switch on/off state"
-        }
-    ]
-
-    volttron_instance.dynamic_agent.vip.rpc.call(
-        CONFIGURATION_STORE,
-        "manage_store",
-        PLATFORM_DRIVER,
-        registry_config,
-        json.dumps(registry_obj),
-        config_type="json"
-    )
-    gevent.sleep(2)
-
-    # driver config
-    driver_config = {
-        "driver_config": {"ip_address": HOMEASSISTANT_TEST_IP, "access_token": ACCESS_TOKEN, "port": PORT},
-        "driver_type": "home_assistant",
-        "registry_config": f"config://{registry_config}",
-        "timezone": "US/Pacific",
-        "interval": 30,
-    }
-
-    volttron_instance.dynamic_agent.vip.rpc.call(
-        CONFIGURATION_STORE,
-        "manage_store",
-        PLATFORM_DRIVER,
-        SWITCH_DEVICE_TOPIC,
-        json.dumps(driver_config),
-        config_type="json"
-    )
-    gevent.sleep(2)
-
-    yield platform_driver
-
-    print("Wiping out switch store.")
-    volttron_instance.dynamic_agent.vip.rpc.call(CONFIGURATION_STORE, "manage_delete_store", PLATFORM_DRIVER)
-    gevent.sleep(0.1)
-
-
-@requires_switch_entity
-def test_switch_get_point(volttron_instance, switch_config_store):
-    """Test getting switch state from real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_switch', 'switch_state').get(timeout=20)
-    assert result in [0, 1], f"Switch state should be 0 or 1, got {result}"
-
-
-@requires_switch_entity
-def test_switch_data_poll(volttron_instance: PlatformWrapper, switch_config_store):
-    """Test scraping all switch data from real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_switch').get(timeout=20)
-    assert 'switch_state' in result, "switch_state should be in scrape_all result"
-    assert result['switch_state'] in [0, 1], f"Switch state should be 0 or 1, got {result['switch_state']}"
-
-
-@requires_switch_entity
-def test_switch_set_state_on(volttron_instance, switch_config_store):
-    """Test turning on switch via real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_switch', 'switch_state', 1)
-    gevent.sleep(5)
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_switch').get(timeout=20)
-    assert result['switch_state'] == 1, f"Switch should be on (1), got {result['switch_state']}"
-
-
-@requires_switch_entity
-def test_switch_set_state_off(volttron_instance, switch_config_store):
-    """Test turning off switch via real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_switch', 'switch_state', 0)
-    gevent.sleep(5)
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_switch').get(timeout=20)
-    assert result['switch_state'] == 0, f"Switch should be off (0), got {result['switch_state']}"
-
-
-# ============================================================================
-# Cover Integration Tests (Requires Real Home Assistant with Cover Entity)
-# ============================================================================
-# To run these tests:
-# 1. Set HOMEASSISTANT_TEST_IP, ACCESS_TOKEN, PORT
-# 2. Set COVER_TEST_ENTITY_ID to your cover entity (e.g., "cover.living_room_blinds")
-
-@pytest.fixture(scope="module")
-def cover_config_store(volttron_instance, platform_driver):
-    """Configure the platform driver with cover entity registry for integration tests."""
-    capabilities = [{"edit_config_store": {"identity": PLATFORM_DRIVER}}]
-    volttron_instance.add_capabilities(volttron_instance.dynamic_agent.core.publickey, capabilities)
-
-    registry_config = "homeassistant_cover_test.json"
-    registry_obj = [
-        {
-            "Entity ID": COVER_TEST_ENTITY_ID,
-            "Entity Point": "state",
-            "Volttron Point Name": "cover_state",
-            "Units": "Open / Closed / Stop",
-            "Units Details": "closed: 0, open: 1, stop: 2",
-            "Writable": True,
-            "Starting Value": 0,
-            "Type": "int",
-            "Notes": "Cover state control"
-        },
-        {
-            "Entity ID": COVER_TEST_ENTITY_ID,
-            "Entity Point": "current_position",
-            "Volttron Point Name": "cover_position",
-            "Units": "Percentage",
-            "Units Details": "0-100, where 0=closed and 100=fully open",
-            "Writable": True,
-            "Starting Value": 0,
-            "Type": "int",
-            "Notes": "Cover position control (0-100)"
-        },
-        {
-            "Entity ID": COVER_TEST_ENTITY_ID,
-            "Entity Point": "current_tilt_position",
-            "Volttron Point Name": "cover_tilt",
-            "Units": "Percentage",
-            "Units Details": "0-100, tilt angle",
-            "Writable": True,
-            "Starting Value": 0,
-            "Type": "int",
-            "Notes": "Cover tilt position (0-100)"
-        }
-    ]
-
-    volttron_instance.dynamic_agent.vip.rpc.call(
-        CONFIGURATION_STORE,
-        "manage_store",
-        PLATFORM_DRIVER,
-        registry_config,
-        json.dumps(registry_obj),
-        config_type="json"
-    )
-    gevent.sleep(2)
-
-    # driver config
-    driver_config = {
-        "driver_config": {"ip_address": HOMEASSISTANT_TEST_IP, "access_token": ACCESS_TOKEN, "port": PORT},
-        "driver_type": "home_assistant",
-        "registry_config": f"config://{registry_config}",
-        "timezone": "US/Pacific",
-        "interval": 30,
-    }
-
-    volttron_instance.dynamic_agent.vip.rpc.call(
-        CONFIGURATION_STORE,
-        "manage_store",
-        PLATFORM_DRIVER,
-        COVER_DEVICE_TOPIC,
-        json.dumps(driver_config),
-        config_type="json"
-    )
-    gevent.sleep(2)
-
-    yield platform_driver
-
-    print("Wiping out cover store.")
-    volttron_instance.dynamic_agent.vip.rpc.call(CONFIGURATION_STORE, "manage_delete_store", PLATFORM_DRIVER)
-    gevent.sleep(0.1)
-
-
-@requires_cover_entity
-def test_cover_get_state(volttron_instance, cover_config_store):
-    """Test getting cover state from real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_state').get(timeout=20)
-    assert result in [0, 1], f"Cover state should be 0 or 1, got {result}"
-
-
-@requires_cover_entity
-def test_cover_get_position(volttron_instance, cover_config_store):
-    """Test getting cover position from real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_position').get(timeout=20)
-    assert isinstance(result, (int, float)) and 0 <= result <= 100, f"Cover position should be 0-100, got {result}"
-
-
-@requires_cover_entity
-def test_cover_data_poll(volttron_instance: PlatformWrapper, cover_config_store):
-    """Test scraping all cover data from real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'scrape_all', 'home_assistant_cover').get(timeout=20)
-    assert 'cover_state' in result, "cover_state should be in scrape_all result"
-    assert 'cover_position' in result, "cover_position should be in scrape_all result"
-    assert result['cover_state'] in [0, 1], f"Cover state should be 0 or 1, got {result['cover_state']}"
-
-
-@requires_cover_entity
-def test_cover_open(volttron_instance, cover_config_store):
-    """Test opening cover via real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_state', 1)
-    gevent.sleep(10)  # Wait for cover to open
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_state').get(timeout=20)
-    assert result == 1, f"Cover should be open (1), got {result}"
-
-
-@requires_cover_entity
-def test_cover_close(volttron_instance, cover_config_store):
-    """Test closing cover via real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_state', 0)
-    gevent.sleep(10)  # Wait for cover to close
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_state').get(timeout=20)
-    assert result == 0, f"Cover should be closed (0), got {result}"
-
-
-@requires_cover_entity
-def test_cover_set_position(volttron_instance, cover_config_store):
-    """Test setting cover position via real Home Assistant."""
-    agent = volttron_instance.dynamic_agent
-    # Set cover to 50% position
-    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_position', 50)
-    gevent.sleep(10)  # Wait for cover to move
-    result = agent.vip.rpc.call(PLATFORM_DRIVER, 'get_point', 'home_assistant_cover', 'cover_position').get(timeout=20)
-    # Allow some tolerance for position (within 10%)
-    assert 40 <= result <= 60, f"Cover position should be around 50, got {result}"
-    # Clean up - close cover
-    agent.vip.rpc.call(PLATFORM_DRIVER, 'set_point', 'home_assistant_cover', 'cover_state', 0)
