@@ -45,9 +45,9 @@ logger = logging.getLogger(__name__)
 # For fan integration tests, set FAN_TEST_ENTITY_ID to your fan entity (e.g., "fan.living_room_fan")
 # For switch integration tests, set SWITCH_TEST_ENTITY_ID to your switch entity (e.g., "switch.living_room_switch")
 # For cover integration tests, set COVER_TEST_ENTITY_ID to your cover entity (e.g., "cover.living_room_blinds")
-HOMEASSISTANT_TEST_IP = ""
+HOMEASSISTANT_TEST_IP = "localhost"
 ACCESS_TOKEN = ""
-PORT = ""
+PORT = "8123"
 FAN_TEST_ENTITY_ID = ""  # Set to your fan entity ID for integration tests
 SWITCH_TEST_ENTITY_ID = ""  # Set to your switch entity ID for integration tests
 COVER_TEST_ENTITY_ID = ""  # Set to your cover entity ID for integration tests
@@ -429,7 +429,7 @@ def switch_config_store(volttron_instance, platform_driver):
     volttron_instance.dynamic_agent.vip.rpc.call(CONFIGURATION_STORE, "manage_delete_store", PLATFORM_DRIVER)
     gevent.sleep(0.1)
 
-
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_switch_entity
 def test_switch_get_point(volttron_instance, switch_config_store):
     """Test getting switch state from real Home Assistant."""
@@ -438,6 +438,7 @@ def test_switch_get_point(volttron_instance, switch_config_store):
     assert result in [0, 1], f"Switch state should be 0 or 1, got {result}"
 
 
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_switch_entity
 def test_switch_data_poll(volttron_instance: PlatformWrapper, switch_config_store):
     """Test scraping all switch data from real Home Assistant."""
@@ -447,6 +448,7 @@ def test_switch_data_poll(volttron_instance: PlatformWrapper, switch_config_stor
     assert result['switch_state'] in [0, 1], f"Switch state should be 0 or 1, got {result['switch_state']}"
 
 
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_switch_entity
 def test_switch_set_state_on(volttron_instance, switch_config_store):
     """Test turning on switch via real Home Assistant."""
@@ -457,6 +459,7 @@ def test_switch_set_state_on(volttron_instance, switch_config_store):
     assert result['switch_state'] == 1, f"Switch should be on (1), got {result['switch_state']}"
 
 
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_switch_entity
 def test_switch_set_state_off(volttron_instance, switch_config_store):
     """Test turning off switch via real Home Assistant."""
@@ -553,6 +556,7 @@ def cover_config_store(volttron_instance, platform_driver):
     gevent.sleep(0.1)
 
 
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_cover_entity
 def test_cover_get_state(volttron_instance, cover_config_store):
     """Test getting cover state from real Home Assistant."""
@@ -561,6 +565,7 @@ def test_cover_get_state(volttron_instance, cover_config_store):
     assert result in [0, 1], f"Cover state should be 0 or 1, got {result}"
 
 
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_cover_entity
 def test_cover_get_position(volttron_instance, cover_config_store):
     """Test getting cover position from real Home Assistant."""
@@ -569,6 +574,7 @@ def test_cover_get_position(volttron_instance, cover_config_store):
     assert isinstance(result, (int, float)) and 0 <= result <= 100, f"Cover position should be 0-100, got {result}"
 
 
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_cover_entity
 def test_cover_data_poll(volttron_instance: PlatformWrapper, cover_config_store):
     """Test scraping all cover data from real Home Assistant."""
@@ -579,6 +585,7 @@ def test_cover_data_poll(volttron_instance: PlatformWrapper, cover_config_store)
     assert result['cover_state'] in [0, 1], f"Cover state should be 0 or 1, got {result['cover_state']}"
 
 
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_cover_entity
 def test_cover_open(volttron_instance, cover_config_store):
     """Test opening cover via real Home Assistant."""
@@ -589,6 +596,7 @@ def test_cover_open(volttron_instance, cover_config_store):
     assert result == 1, f"Cover should be open (1), got {result}"
 
 
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_cover_entity
 def test_cover_close(volttron_instance, cover_config_store):
     """Test closing cover via real Home Assistant."""
@@ -599,6 +607,7 @@ def test_cover_close(volttron_instance, cover_config_store):
     assert result == 0, f"Cover should be closed (0), got {result}"
 
 
+@pytest.mark.parametrize("volttron_instance", [{"messagebus": "zmq"}], indirect=True)
 @requires_cover_entity
 def test_cover_set_position(volttron_instance, cover_config_store):
     """Test setting cover position via real Home Assistant."""
